@@ -64,7 +64,13 @@ fi
 "$VENV_DIR/bin/pip" install -r "$REPO_DIR/requirements.txt"
 
 echo "==> installing cron entry (04:00 Europe/Lisbon)"
-CRON_LINE="0 4 * * * $VENV_DIR/bin/python $REPO_DIR/run_pipeline.py >> $LOG_DIR/cron.log 2>&1"
+# IMPORTANTE: Ubuntu cron NÃO usa a directiva TZ= para interpretar schedules — apenas
+# como env var para o processo. O schedule é sempre em SYSTEM time.
+# Contabo VPS (Alemanha) corre em CEST/CET, que é sempre Lisbon+1h ano inteiro
+# (Portugal e Continental Europe entram em DST no mesmo dia).
+# Logo: "0 5" em system time = 04:00 Lisbon, year-round.
+# Se deploys noutro fuso, ajusta a hora aqui ou faz `timedatectl set-timezone Europe/Lisbon`.
+CRON_LINE="0 5 * * * $VENV_DIR/bin/python $REPO_DIR/run_pipeline.py >> $LOG_DIR/cron.log 2>&1"
 TZ_LINE="TZ=Europe/Lisbon"
 
 # Build the new crontab idempotently
