@@ -1,0 +1,27 @@
+.env
+.env.*
+!.env.example
+credentials/
+*.pem
+*.key
+
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+logs/
+agents/*/data/
+agents/*/reports/
+agents/*/fetch.log
+# Mantido em GCS (gs://ai-call-reports/agents/<X>/context.json) — VPS lê de lá
+agents/*/context.json
+
+# Scripts macOS antigos — não vão para o VPS
+legacy/
+
+.DS_Store
+
+# Claude Code local settings — per-machine, podem conter tokens em permission rules
+**/.claude/settings.local.json

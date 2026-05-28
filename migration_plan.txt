@@ -1,0 +1,513 @@
+Ready to code?
+
+ Here is Claude's plan:
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ Migração: Pipeline de Call Reports — 
+ Mac/Claude Code → Contabo VPS + DeepSeek +
+  GCS
+
+ Context
+
+ O pipeline atual corre num Mac local via
+ launchd às 04:00 e depende do Claude Code
+ (este CLI) para fazer a orquestração: ler
+ logs, decidir o que correr, chamar a
+ Anthropic API para gerar analysis.json, e
+ disparar build_report.py + send_email.py.
+ Os ~9.7 GB de dados acumulados (áudios
+ MP3, transcrições, JSON, PDFs) vivem em
+ agents/<X>_Call_Report/data/<dd-mm-yyyy>/
+ no disco do Mac.
+
+ Problemas que esta migração resolve:
+ - Dependência do Mac ligado às 04:00 e do
+ Full Disk Access do macOS.
+ - Custo elevado da Anthropic API (~$15–25
+ por report × 6 agentes/dia).
+ - Storage local a crescer sem teto (já em
+ 9.7 GB).
+ - Orquestração via AI agent (não
+ determinística, difícil de debugar).
+
+ Resultado pretendido:
+ - VPS Contabo a correr um único script
+ Python determinístico via cron.
+ - Análise gerada pela DeepSeek API
+ (deepseek-v4-pro, ~10–30× mais barato que
+ Claude Opus).
+ - Google Cloud Storage como fonte única da
+  verdade — VPS só usa disco local como
+ cache temporário durante execução.
+ - Email Gmail SMTP mantém-se (sem mudanças
+  no endereço de envio).
+
+ ---
+ Arquitetura nova
+
+ [cron 04:00 UTC]
+        │
+        ▼
+ ┌─────────────────────────────────────────
+ ────────────────┐
+ │ Contabo VPS  (Ubuntu 24.04, Python 3.11,
+  ffmpeg)        │
+ │
+                  │
+ │  run_pipeline.py
+                  │
+ │   ├─ 1. fetch_calls (HubSpot API)
+                  │
+ │   ├─ 2. download_audio →
+ /tmp/pipeline/<date>/audio/    │
+ │   ├─ 3. split_audio (ffmpeg, >25MB)
+                  │
+ │   ├─ 4. transcribe (Whisper API,
+ parallel x5)            │
+ │   ├─ 5. analyze (DeepSeek v4-pro)
+                  │
+ │   ├─ 6. build_report (ReportLab → PDF)
+                  │
+ │   ├─ 7. send_email (Gmail SMTP)
+                  │
+ │   ├─ 8. upload_to_gcs (tudo)
+                  │
+ │   └─ 9. cleanup /tmp/pipeline/<date>/
+                  │
+ └─────────────────────────────────────────
+ ────────────────┘
+        │
+         │
+        ▼
+         ▼
+   Gmail SMTP
+ gs://<bucket>/agents/<X>/<date>/
+   (PDFs aos comerciais)
+ ├─ audio/
+
+ ├─ transcripts/
+
+ ├─ calls_meta.json
+
+ ├─ analysis.json
+
+ └─ report.pdf
+
+ gs://<bucket>/agents/<X>/context.json
+
+ gs://<bucket>/logs/<date>.log
+
+ Disco do VPS apenas tem dados durante a
+ execução (~5 min/dia). Cleanup no final.
+
+ ---
+ GCS layout
+
+ gs://<bucket>/
+ ├── agents/
+ │   ├── Ruben_Call_Report/
+ │   │   ├── context.json
+      (estado evolutivo do coaching)
+ │   │   └── data/
+ │   │       ├── 28-05-2026/
+ │   │       │   ├── audio/<call_id>.mp3
+ │   │       │   ├──
+ transcripts/<call_id>.txt
+ │   │       │   ├── calls_meta.json
+ │   │       │   ├── analysis.json
+ │   │       │   └── report.pdf
+ │   │       └── 27-05-2026/...
+ │   ├── David_Call_Report/...
+ │   ├── Sandra_Call_Report/...
+ │   ├── Emanuel_Call_Report/...
+ │   ├── Ze_Call_Report/...
+ │   └── Joana_Call_Report/...
+ └── logs/
+     └── 2026-05-28.log
+
+ Mantém a mesma estrutura de pastas que já
+ existe localmente — facilita a migração
+ one-shot.
+
+ ---
+ VPS Contabo — specs recomendadas
+
+ Recurso: Plano
+ Valor mínimo: Contabo VPS XS (~€4.50/mês)
+ Recomendado: Contabo VPS S (~€6.99/mês)
+ ────────────────────────────────────────
+ Recurso: vCPU
+ Valor mínimo: 4
+ Recomendado: 4
+ ────────────────────────────────────────
+ Recurso: RAM
+ Valor mínimo: 6 GB
+ Recomendado: 8 GB
+ ────────────────────────────────────────
+ Recurso: Disco
+ Valor mínimo: 100 GB SSD
+ Recomendado: 75 GB NVMe (mais rápido)
+ ────────────────────────────────────────
+ Recurso: OS
+ Valor mínimo: Ubuntu 24.04 LTS
+ Recomendado: Ubuntu 24.04 LTS
+ ────────────────────────────────────────
+ Recurso: Localização
+ Valor mínimo: Nuremberg ou Düsseldorf
+ Recomendado: Indiferente — latência
+   aceitável para HubSpot/OpenAI/DeepSeek
+
+ Justificação: workload é CPU-light
+ (Whisper e DeepSeek são API calls; só
+ ffmpeg consome CPU em picos). Peak de RAM
+ expectável: ~2 GB. Disco temporário: ~3
+ GB/dia. VPS S dá margem confortável e
+ custa quase igual ao XS.
+
+ ---
+ Mudanças no código
+
+ Ficheiros novos
+
+ run_pipeline.py (raiz do repo) — substitui
+  Claude Code + daily_fetch.py + lógica do
+ CLAUDE.md
+
+ Script único, idempotente, chamado pelo
+ cron. Estrutura:
+
+ def main(target_date: str | None = None):
+     target_date = target_date or
+ yesterday_lisbon()
+     setup_logging(target_date)
+     log_start()
+     try:
+         for agent in AGENTS:
+             process_agent(agent,
+ target_date)
+     finally:
+         upload_log_to_gcs(target_date)
+         cleanup_local_cache(target_date)
+
+ def process_agent(agent, date):
+     workdir = Path("/tmp/pipeline") / date
+  / agent["name"]
+     # 1. fetch HubSpot calls
+     calls =
+ fetch_calls_for_date(agent["owner_id"],
+ date)
+     if not calls:
+         return
+     # 2. download audio + 3. split + 4.
+ transcribe
+     transcribe_all(calls, workdir)
+     # 5. analyze (DeepSeek) — só se houver
+  transcripts > 0
+     if any_has_transcript(calls):
+         context = gcs_read_json(f"agents/{
+ agent['folder']}/context.json")
+         analysis =
+ analyze_with_deepseek(transcripts,
+ context, agent)
+         update_context(context, analysis,
+ date)
+         # 6. build PDF
+         pdf_path = build_pdf(agent, date,
+ analysis)
+         # 7. send email
+         send_email(agent, date, pdf_path)
+         # 8. upload everything to GCS
+         gcs_upload_folder(workdir,
+ f"agents/{agent['folder']}/data/{date_dd_m
+ m_yyyy}/")
+         gcs_write_json(f"agents/{agent['fo
+ lder']}/context.json", context)
+
+ Reutiliza funções existentes de
+ daily_fetch.py (fetch_calls_for_date,
+ download_audio, split_audio_if_needed,
+ transcribe_audio) e de agents/Ruben_Call_R
+ eport/generate_report.py (formato do
+ prompt de análise).
+
+ gcs_storage.py (novo helper)
+
+ Wrapper fino sobre google-cloud-storage:
+ - gcs_read_json(path) → dict
+ - gcs_write_json(path, data)
+ - gcs_upload_file(local, remote)
+ - gcs_upload_folder(local_dir,
+ remote_prefix)
+ - gcs_download_file(remote, local)
+ - gcs_exists(path) → bool
+
+ Service account JSON em
+ /etc/daily-calls/gcs-sa.json (chmod 600),
+ path via env
+ GOOGLE_APPLICATION_CREDENTIALS.
+
+ deepseek_analysis.py (novo)
+
+ - Cliente OpenAI-compatible apontado a
+ https://api.deepseek.com.
+ - Função analyze(transcripts: list[dict],
+ context: dict, agent: dict) → dict que
+ devolve o analysis.json com as 5 chaves do
+  CLAUDE.md (overall_assessment,
+ what_agent_does_well, critical_weaknesses,
+  call_summary, priority_coaching_actions).
+ - Prompt em português (Portugal), inclui
+ regra real-estate (sem cross-sell entre
+ developments) condicionalmente para
+ David/Sandra/Zé/Joana.
+ - Modelo: deepseek-v4-pro (1M context —
+ cabem facilmente 50+ transcrições +
+ context histórico).
+ - Usa response_format JSON para garantir
+ output estruturado.
+ - Inclui prompt cache: o system prompt +
+ agent context são marcados como cacheable
+ (cache hit reduz preço a 1/10).
+
+ Ficheiros a alterar
+
+ agents_config.py
+
+ - Adicionar campo folder em cada agente
+ (ex: "Ruben_Call_Report") para uniformizar
+  o nome usado em GCS paths.
+ - Tornar FFMPEG_BIN / FFPROBE_BIN
+ dinâmicos: detetar /opt/homebrew/bin (Mac)
+  vs /usr/bin (Linux). Default Linux paths.
+
+ daily_fetch.py
+
+ - Manter as funções utilitárias (HubSpot,
+ Whisper) mas remover a parte de
+ orquestração (loop de agentes, escrita de
+ logs, notificação macOS). Passa a ser um
+ módulo importado por run_pipeline.py.
+ - Remover signal.SIGALRM (não funciona bem
+  em todos os contextos Linux) ou
+ substituir por concurrent.futures timeout.
+ - Mudar paths hardcoded BASE / "agents" /
+ ... para usar /tmp/pipeline/<date>/
+ durante execução.
+
+ build_report.py
+
+ - Aceitar analysis_path e output_path como
+  argumentos absolutos (em vez de derivar
+ de estrutura agents/<X>/data/...). Permite
+  usar com qualquer workdir.
+
+ send_email.py
+
+ - Sem mudanças funcionais — Gmail SMTP
+ funciona do Linux igual ao Mac.
+ - Adicionar try/except a enviar email para
+  analytics.karma@gmail.com em caso de
+ falha global do pipeline (gestor de erros
+ em run_pipeline.py).
+
+ requirements.txt (adicionar)
+
+ google-cloud-storage
+ Remover anthropic (deixa de ser usado).
+
+ Ficheiros a remover (no VPS)
+
+ - DailyCalls.app/ (macOS-only)
+ - com.andre.dailycalls.plist.template
+ (launchd)
+ - install.sh (macOS-specific) →
+ substituído por install_vps.sh
+ - rename_folders.py (one-off script)
+ - agents/*/generate_report.py (lógica
+ passa a estar em run_pipeline.py +
+ deepseek_analysis.py)
+
+ Ficheiros novos de deployment
+
+ install_vps.sh
+
+ #!/bin/bash
+ set -e
+ apt-get update && apt-get install -y
+ python3.11 python3.11-venv ffmpeg
+ python3.11 -m venv /opt/daily-calls/venv
+ /opt/daily-calls/venv/bin/pip install -r
+ requirements.txt
+ mkdir -p /etc/daily-calls
+ chmod 700 /etc/daily-calls
+ # user copia .env e gcs-sa.json para
+ /etc/daily-calls/ manualmente
+ crontab -l | { cat; echo "0 4 * * *
+ /opt/daily-calls/venv/bin/python
+ /opt/daily-calls/run_pipeline.py >>
+ /var/log/daily-calls/cron.log 2>&1"; } |
+ crontab -
+
+ .env.example (template do ficheiro de
+ secrets)
+
+ HUBSPOT_TOKEN=...
+ OPENAI_API_KEY=...
+ DEEPSEEK_API_KEY=...
+ GMAIL_USER=...
+ GMAIL_APP_PASSWORD=...
+ GCS_BUCKET=<bucket-name>
+ GOOGLE_APPLICATION_CREDENTIALS=/etc/daily-
+ calls/gcs-sa.json
+ PIPELINE_FAILURE_EMAIL=analytics.karma@gma
+ il.com
+
+ Secrets vivem em /etc/daily-calls/.env
+ (chmod 600, owner root). run_pipeline.py
+ faz load_dotenv("/etc/daily-calls/.env")
+ se existir, senão o .env local.
+
+ ---
+ Plano de cutover
+
+ Pré-cutover (no Mac)
+
+ 1. Upload do histórico para GCS — script
+ migrate_history_to_gcs.py (one-shot, corre
+  do Mac):
+ # Itera agents/*/data/*/ e replica
+ estrutura para
+ gs://<bucket>/agents/<X>/data/<date>/
+ # Também faz upload de cada
+ agents/*/context.json para
+ gs://<bucket>/agents/<X>/context.json
+ 1. Usa google-cloud-storage Python SDK
+ (não exige gsutil instalado). Skip
+ ficheiros já existentes (idempotente).
+ Estimativa: ~9.7 GB × ~10 MB/s upload Mac
+ = ~15–20 min.
+
+ Cutover (no VPS)
+
+ 2. Provisionar VPS Contabo, instalar OS.
+ 3. git clone do repo para
+ /opt/daily-calls/.
+ 4. Copiar .env (com secrets de produção) e
+  gcs-sa.json para /etc/daily-calls/.
+ 5. Correr install_vps.sh.
+ 6. Dry-run manual: python run_pipeline.py
+ --date 2026-05-27 (dia que já tem dados
+ conhecidos) e confirmar:
+   - Logs OK
+   - PDFs gerados localmente (sem enviar
+ email — flag --no-email)
+   - Upload para GCS verifica no console
+ GCP
+ 7. Comparar analysis.json gerado pela
+ DeepSeek vs Anthropic histórico — afinar
+ prompt se necessário.
+ 8. Quando satisfeito, ativar cron real e
+ desativar launchd no Mac: launchctl unload
+  ~/Library/LaunchAgents/com.andre.dailycal
+ ls.plist.
+
+ Pós-cutover
+
+ 9. Mac fica como backup arquivo (não corre
+  nada). Pode reativar launchd se houver
+ problema com VPS.
+ 10. Após 30 dias de operação estável no
+ VPS, considerar apagar ~/Documents/daily_c
+ all_pipeline/agents/*/data/ do Mac (mantém
+  código).
+
+ ---
+ Tratamento de falhas
+
+ - Pipeline crash global: run_pipeline.py
+ envolve main() em try/except. Em caso de
+ exceção não capturada, envia email para
+ PIPELINE_FAILURE_EMAIL com últimas N
+ linhas do log + traceback.
+ - Falha por agente: cada process_agent()
+ corre em try/except próprio. Falha de um
+ agente não bloqueia os outros. Erro fica
+ no log e é incluído no email de resumo.
+ - Falha de API (HubSpot/Whisper/DeepSeek):
+  retry com backoff exponencial (3
+ tentativas) já existente em
+ daily_fetch.py. Para DeepSeek, adicionar
+ retry no novo deepseek_analysis.py.
+ - Falha de upload GCS: retry 3x. Se falhar
+  definitivamente, mantém ficheiros locais
+ no /tmp/pipeline/<date>/ (não fazer
+ cleanup) e alerta.
+
+ ---
+ Verificação end-to-end
+
+ 1. Local (Mac, dev): correr python
+ run_pipeline.py --date 2026-05-27
+ --no-email --gcs-prefix=test/ e verificar
+ que tudo aparece em
+ gs://<bucket>/test/agents/....
+ 2. VPS (staging): SSH para VPS, correr
+ python /opt/daily-calls/run_pipeline.py
+ --date 2026-05-27 --no-email manualmente.
+ 3. VPS (production): aguardar primeira
+ execução cron natural. Verificar:
+   - Log em
+ gs://<bucket>/logs/2026-05-28.log
+   - PDFs em gs://<bucket>/agents/<X>/data/
+ 28-05-2026/report.pdf
+   - Email recebido por cada comercial + CC
+  karma
+   - context.json atualizado em GCS com
+ coaching_insights evoluído
+ 4. Comparação A/B durante 1 semana
+ (opcional): correr pipeline antigo no Mac
+ e novo no VPS em paralelo, comparar PDFs
+ lado-a-lado para validar qualidade da
+ análise DeepSeek vs Anthropic.
+
+
+ 1. Local (Mac, dev): correr python run_pipeline.py --date 2026-05-27 --no-email
+ --gcs-prefix=test/ e verificar que tudo aparece em gs://<bucket>/test/agents/....
+ 2. VPS (staging): SSH para VPS, correr python /opt/daily-calls/run_pipeline.py --date
+ 2026-05-27 --no-email manualmente.
+ 3. VPS (production): aguardar primeira execução cron natural. Verificar:
+   - Log em gs://<bucket>/logs/2026-05-28.log
+   - PDFs em gs://<bucket>/agents/<X>/data/28-05-2026/report.pdf
+   - Email recebido por cada comercial + CC karma
+   - context.json atualizado em GCS com coaching_insights evoluído
+ 4. Comparação A/B durante 1 semana (opcional): correr pipeline antigo no Mac e novo no VPS
+  em paralelo, comparar PDFs lado-a-lado para validar qualidade da análise DeepSeek vs
+ Anthropic.
+
+ ---
+ Estimativa de custos mensais
+
+ ┌─────────────────────────────────────────────────┬────────────────────────────────────┐
+ │                      Item                       │               Custo                │
+ ├─────────────────────────────────────────────────┼────────────────────────────────────┤
+ │ Contabo VPS S                                   │ ~€6.99/mês                         │
+ ├─────────────────────────────────────────────────┼────────────────────────────────────┤
+ │ GCS Standard (Europe, ~10–50 GB)                │ ~€0.50–2.50/mês                    │
+ ├─────────────────────────────────────────────────┼────────────────────────────────────┤
+ │ OpenAI Whisper (~30 min audio/dia × 30 dias)    │ ~$5/mês                            │
+ ├─────────────────────────────────────────────────┼────────────────────────────────────┤
+ │ DeepSeek v4-pro (~6 agentes × ~5K tokens out ×  │ ~$2–5/mês                          │
+ │ 30 dias, com prompt cache)                      │                                    │
+ ├─────────────────────────────────────────────────┼────────────────────────────────────┤
+ │ Gmail SMTP                                      │ grátis                             │
+ ├─────────────────────────────────────────────────┼────────────────────────────────────┤
+ │ Total                                           │ ~€15–20/mês vs ~$600–1500/mês      │
+ │                                                 │ atual (Anthropic)                  │
+ └─────────────────────────────────────────────────┴────────────────────────────────────┘
+
+ ---
+ Pontos em aberto a confirmar no momento da implementação
+
+ - Nome exato do bucket GCS (placeholder <bucket-name> no plano).
+ - Region exata do bucket GCS (recomendado europe-west1 ou europe-west4).
+ - Estratégia de keep-alive / monitorização do cron (healthchecks.io ficou pendente — pode
+ adicionar-se depois sem impacto arquitetural).
