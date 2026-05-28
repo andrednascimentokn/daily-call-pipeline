@@ -22,7 +22,7 @@ REPO_DIR=${REPO_DIR:-/opt/daily-calls}
 ETC_DIR=${ETC_DIR:-/etc/daily-calls}
 LOG_DIR=${LOG_DIR:-/var/log/daily-calls}
 VENV_DIR="$REPO_DIR/venv"
-PYTHON_BIN=${PYTHON_BIN:-python3.11}
+PYTHON_BIN=${PYTHON_BIN:-python3.12}  # Ubuntu 24.04 default; override with env var if needed
 
 if [[ $EUID -ne 0 ]]; then
   echo "Run as root (or via sudo)." >&2
