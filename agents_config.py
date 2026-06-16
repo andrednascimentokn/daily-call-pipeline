@@ -56,6 +56,14 @@ AGENTS = [
      "report_display": "Joana Alves @ Real Estate",
      "business": "real_estate",
      "email_to": "sandra@realestateinvest.pt", "email_cc": _CC_KARMA + ["joana.alves@realestateinvest.pt"]},
+    {"name": "emanuel_re", "display": "Emanuel Martins", "owner_id": "84330275",
+     "folder": "Emanuel_RE_Call_Report",
+     "data_dir": AGENTS_DIR / "Emanuel_RE_Call_Report" / "data",
+     "report_dir": AGENTS_DIR / "Emanuel_RE_Call_Report" / "reports",
+     "report_display": "Emanuel Martins @ Real Estate",
+     "business": "real_estate",
+     "email_to": "sandra@realestateinvest.pt",
+     "email_cc": ["andre.nascimento@karma-network.com", "emanuel.martins@realestateinvest.pt"]},
 ]
 
 
