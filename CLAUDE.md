@@ -46,11 +46,30 @@ The analysis.json must contain these keys:
 - Context: `agents/<Agent>_Call_Report/context.json`
 - Email sender: `send_email.py`
 - PDF builder: `build_report.py`
+- Weekly report: `run_weekly.py`, `weekly_analysis.py`, `build_weekly_report.py`; artifacts in `agents/<Agent>_Call_Report/weekly/<dd-mm-yyyy>/`
 - Logs: `logs/<YYYY-MM-DD>.log`
 
 ## Date format
 
 Folders use `dd-mm-yyyy` format (e.g., `08-05-2026`). The `--date` CLI argument uses `YYYY-MM-DD`.
+
+## Weekly overview report (run_weekly.py)
+
+Separate from the daily reports: a **weekly overview** (high-level, NOT call-by-call) for
+**Real Estate agents only**, emailed every **Friday 07:00 Europe/Lisbon** (cron `0 8 * * 5` —
+system time is Lisbon+1h) to the **management distribution only** (`sandra@realestateinvest.pt` + `_CC_KARMA`), never to the commercials themselves.
+
+- `run_weekly.py` — orchestrator. Defaults to the previous Mon–Fri; flags: `--week-start YYYY-MM-DD`,
+  `--agent`, `--no-email`, `--no-gcs`, `--dry-run`, `--email-override`, `--reuse-stored`.
+- It does NOT re-fetch HubSpot — it aggregates the already-stored daily `calls_meta.json` (metrics)
+  and `analysis.json` (coaching) from GCS over the week.
+- `weekly_analysis.py::analyze_weekly` — DeepSeek weekly synthesis. Agents with no daily analyses
+  fall back to a deterministic metrics-only overview (no model call).
+- `build_weekly_report.py::generate_weekly_pdf` — PDF reusing the daily report's styles/helpers.
+- Artifacts upload to GCS under `agents/<folder>/weekly/<dd-mm-yyyy>/`.
+
+Weekly analysis schema keys: `week_overview`, `metrics_commentary`, `recurring_strengths`,
+`recurring_weaknesses` (each with an `action`), `weekly_trend`, `focus_next_week`.
 
 ## Important
 
@@ -59,7 +78,7 @@ Folders use `dd-mm-yyyy` format (e.g., `08-05-2026`). The `--date` CLI argument 
 - Write all analysis content in Portuguese (Portugal) — overall assessment, strengths, weaknesses, call summaries, coaching actions, and example phrases
 - The coaching insights in context.json should evolve over time — note improvements and recurring issues
 
-## Real Estate agents (David, Sandra, Zé, Joana)
+## Real Estate agents (David, Sandra, Zé, Joana, Emanuel Martins)
 
 These agents sell real estate (Conde da Ribeira, Copa, etc.). When analysing their calls:
 
