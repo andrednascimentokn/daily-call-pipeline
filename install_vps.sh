@@ -71,18 +71,21 @@ echo "==> installing cron entry (04:00 Europe/Lisbon)"
 # Logo: "0 5" em system time = 04:00 Lisbon, year-round.
 # Se deploys noutro fuso, ajusta a hora aqui ou faz `timedatectl set-timezone Europe/Lisbon`.
 CRON_LINE="0 5 * * * $VENV_DIR/bin/python $REPO_DIR/run_pipeline.py >> $LOG_DIR/cron.log 2>&1"
+# Weekly overview report — Sexta 07:00 Lisbon = 08:00 system time (system = Lisbon+1h).
+WEEKLY_CRON_LINE="0 8 * * 5 $VENV_DIR/bin/python $REPO_DIR/run_weekly.py >> $LOG_DIR/cron.log 2>&1"
 TZ_LINE="TZ=Europe/Lisbon"
 
 # Build the new crontab idempotently
 TMP_CRON=$(mktemp)
-crontab -l 2>/dev/null | grep -v "$REPO_DIR/run_pipeline.py" | grep -v "^TZ=Europe/Lisbon$" > "$TMP_CRON" || true
+crontab -l 2>/dev/null | grep -v "$REPO_DIR/run_pipeline.py" | grep -v "$REPO_DIR/run_weekly.py" | grep -v "^TZ=Europe/Lisbon$" > "$TMP_CRON" || true
 echo "$TZ_LINE" >> "$TMP_CRON"
 echo "$CRON_LINE" >> "$TMP_CRON"
+echo "$WEEKLY_CRON_LINE" >> "$TMP_CRON"
 crontab "$TMP_CRON"
 rm "$TMP_CRON"
 
 echo "==> done. Cron is now scheduled:"
-crontab -l | grep -E "run_pipeline.py|TZ="
+crontab -l | grep -E "run_pipeline.py|run_weekly.py|TZ="
 echo
 echo "Sanity check (dry-run, no email, no GCS write):"
 echo "  sudo $VENV_DIR/bin/python $REPO_DIR/run_pipeline.py --date 2026-05-27 --no-email --no-gcs --dry-run"

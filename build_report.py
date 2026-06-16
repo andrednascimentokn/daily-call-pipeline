@@ -61,6 +61,8 @@ GREEN_TEXT = colors.HexColor("#388E3C")
 def md_to_html(text):
     if not text:
         return ""
+    # Normalize unicode hyphen variants Helvetica cannot render to ASCII "-"
+    text = text.replace("\u2011", "-").replace("\u2010", "-").replace("\u2012", "-").replace("\u00ad", "-")
     text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
     text = re.sub(r"(?<!\*)\*(?!\*)(.+?)\*(?!\*)", r'<i>\1</i>', text)
     text = re.sub(r"(?<![a-zA-Z])_(.+?)_(?![a-zA-Z])", r'<i>\1</i>', text)
