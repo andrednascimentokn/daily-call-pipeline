@@ -56,8 +56,11 @@ Folders use `dd-mm-yyyy` format (e.g., `08-05-2026`). The `--date` CLI argument 
 ## Weekly overview report (run_weekly.py)
 
 Separate from the daily reports: a **weekly overview** (high-level, NOT call-by-call) for
-**Real Estate agents only**, emailed every **Friday 07:00 Europe/Lisbon** (cron `0 8 * * 5` —
-system time is Lisbon+1h) to the **management distribution only** (`sandra@realestateinvest.pt` + `_CC_KARMA`), never to the commercials themselves.
+the **Real Estate + Funeral em Vida** agents (`run_weekly.WEEKLY_BUSINESSES`), emailed every
+**Friday 07:00 Europe/Lisbon** (cron `0 8 * * 5` — system time is Lisbon+1h) to the **management
+distribution only**, never to the commercials. Recipients are routed by business via
+`weekly_recipients(agent)`: Real Estate → `sandra@realestateinvest.pt` + `_CC_KARMA`;
+Funeral em Vida → the agent's `email_to` (Rúben) + `_CC_KARMA`.
 
 - `run_weekly.py` — orchestrator. Defaults to the previous Mon–Fri; flags: `--week-start YYYY-MM-DD`,
   `--agent`, `--no-email`, `--no-gcs`, `--dry-run`, `--email-override`, `--reuse-stored`.
@@ -77,6 +80,24 @@ Weekly analysis schema keys: `week_overview`, `metrics_commentary`, `recurring_s
 - Be brutally honest in coaching analysis — reference specific calls, moments, and quotes
 - Write all analysis content in Portuguese (Portugal) — overall assessment, strengths, weaknesses, call summaries, coaching actions, and example phrases
 - The coaching insights in context.json should evolve over time — note improvements and recurring issues
+
+## Multiple HubSpot accounts (per-agent token)
+
+Most agents share the global `HUBSPOT_TOKEN`. An agent whose calls live in a DIFFERENT HubSpot
+account sets `hubspot_token_env` in `agents_config.py` (the name of an env var holding that
+account's private app token). `daily_fetch.fetch_and_transcribe` resolves the token per agent and
+threads it through `fetch_calls_for_date` / `get_contact_name` / `download_recording`. Example:
+`ruben_funeral` uses `hubspot_token_env="HUBSPOT_TOKEN_FUNERAL"` (Funerárias Unidas account,
+owner `33660815`). The token lives only in `/etc/daily-calls/.env`, never in git.
+
+## Funeral em Vida agent (Rúben @ Funerárias Unidas)
+
+Business `funeral_em_vida`: pre-paid funeral planning (Funerárias Unidas). Rúben makes the calls
+through the Marcos Pereira HubSpot account. Coaching is governed by `FUNERAL_RULE` in
+`deepseek_analysis.py` (sensitive topic → empathy, no pressure; evaluate the call against the
+outbound script: discovery → product explanation → price/payment → objection handling → close the
+next step). Business blurbs/rules live in `BUSINESS_BLURBS` / `BUSINESS_RULES` (shared by the daily
+and weekly analyses). Daily + weekly reports go to `ruben.correia@funerariasunidas.pt` + `_CC_KARMA`.
 
 ## Real Estate agents (David, Sandra, Zé, Joana, Emanuel Martins)
 
