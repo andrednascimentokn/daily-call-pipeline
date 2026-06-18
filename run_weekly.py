@@ -43,9 +43,19 @@ from build_weekly_report import generate_weekly_pdf
 TZ_LISBON = ZoneInfo("Europe/Lisbon")
 PIPELINE_DIR = Path(__file__).resolve().parent
 
-# Management-only distribution for the weekly overview (NOT the commercials).
-WEEKLY_TO = "sandra@realestateinvest.pt"
-WEEKLY_CC = list(_CC_KARMA)  # andre, luis, rui
+# Weekly overview is management-only (NOT the commercials). Recipients depend on the
+# agent's business line.
+WEEKLY_BUSINESSES = {"real_estate", "funeral_em_vida"}
+
+
+def weekly_recipients(agent):
+    """(to, cc) for an agent's weekly overview — routed by business line."""
+    business = agent.get("business", "")
+    if business == "real_estate":
+        return "sandra@realestateinvest.pt", list(_CC_KARMA)
+    if business == "funeral_em_vida":
+        return agent["email_to"], list(_CC_KARMA)
+    return agent["email_to"], list(agent.get("email_cc", []))
 
 
 def setup_weekly_logging(run_date: str) -> Path:
@@ -164,16 +174,17 @@ def process_agent(agent: Dict[str, Any], week_start: datetime, days: List[dateti
         subject = f"Resumo Semanal - {display} - {range_label}"
         body = (f"Em anexo o resumo semanal (overview) das chamadas de {display} "
                 f"referente à semana de {range_label}.")
+        wk_to, wk_cc = weekly_recipients(agent)
         if email_override:
             to_list = [email_override]
             cc_list: List[str] = []
             subject = f"[SMOKE-TEST] {subject}"
         else:
-            to_list = [WEEKLY_TO]
-            cc_list = WEEKLY_CC
+            to_list = [wk_to]
+            cc_list = wk_cc
         _smtp_send(to_list, cc_list, subject, body, attachment=pdf_path)
         log.info(f"  [{display}] weekly email sent to {to_list[0]}"
-                 + (f" (override; orig={WEEKLY_TO})" if email_override else f" cc={cc_list}"))
+                 + (f" (override; orig={wk_to})" if email_override else f" cc={cc_list}"))
     else:
         log.info(f"  [{display}] --no-email: skipping send")
 
@@ -215,11 +226,11 @@ def main() -> int:
         ws = datetime(pm.year, pm.month, pm.day)
     days = [ws + timedelta(days=i) for i in range(5)]  # Mon–Fri
 
-    agents = [a for a in AGENTS if a.get("business") == "real_estate"]
+    agents = [a for a in AGENTS if a.get("business") in WEEKLY_BUSINESSES]
     if args.agent:
         agents = [a for a in agents if a["name"] == args.agent]
         if not agents:
-            log.error(f"Unknown real_estate agent: {args.agent}")
+            log.error(f"Unknown weekly agent: {args.agent}")
             return 2
 
     log.info(f"=== Weekly start | week={ws.strftime('%d-%m-%Y')}..{days[-1].strftime('%d-%m-%Y')} "

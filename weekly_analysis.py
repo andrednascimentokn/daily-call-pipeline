@@ -24,7 +24,8 @@ from deepseek_analysis import (
     DEEPSEEK_BASE_URL,
     DEEPSEEK_MODEL,
     DEEPSEEK_FALLBACK_MODEL,
-    REAL_ESTATE_RULE,
+    BUSINESS_BLURBS,
+    BUSINESS_RULES,
 )
 
 log = logging.getLogger("pipeline")
@@ -92,13 +93,12 @@ def _build_user_prompt(
 ) -> str:
     sections: List[str] = []
     sections.append(f"AGENTE: {agent['display']}")
-    sections.append(
-        "CONTEXTO DO NEGÓCIO: Real Estate Invest vende imóveis em desenvolvimentos "
-        "portugueses específicos. O agente faz contacto, agenda visitas, negoceia "
-        "condições e acompanha o pipeline até à reserva/escritura."
-    )
+    business = agent.get("business", "")
+    sections.append(f"CONTEXTO DO NEGÓCIO: {BUSINESS_BLURBS.get(business, '')}")
     sections.append(f"SEMANA: {week_label}")
-    sections.append(REAL_ESTATE_RULE)
+    rule = BUSINESS_RULES.get(business)
+    if rule:
+        sections.append(rule)
 
     # Aggregate weekly metrics + per-day breakdown
     sections.append("\nMÉTRICAS DA SEMANA:")

@@ -50,6 +50,50 @@ REAL_ESTATE_RULE = (
     "graciosamente — não recomendes redirecionar para outros developments."
 )
 
+FUNERAL_RULE = (
+    "REGRA CRÍTICA — FUNERAL EM VIDA (Funerárias Unidas): Tema sensível (morte). Avalia SEMPRE "
+    "empatia, tato e ritmo — nunca pressão agressiva. A chamada ideal segue o guião outbound: "
+    "(1) DESCOBERTA antes de explicar — para quem é o plano (próprio/familiar), sepultura ou "
+    "cremação, velório religioso ou civil, localidade de residência, idade, filhos, quem será o "
+    "responsável por avisar, e o MOTIVO (deixar tudo tratado/pago, não sobrecarregar a família). "
+    "(2) EXPLICAÇÃO clara — contrato de serviço funerário pré-pago, preço bloqueado com atualização "
+    "anual só à inflação, família aliviada de decisões e custos, e tratamento de toda a burocracia "
+    "(certidão de óbito, pensão de viuvez, reembolso da Segurança Social). (3) PREÇO/PAGAMENTO — "
+    "desde 2.600€ com tudo incluído, a pronto pagamento ou sinal de 500€/1.000€ + 12/24 prestações "
+    "sem juros; se falecer antes do pagamento total, a família só paga o restante. (4) GESTÃO DE "
+    "OBJEÇÕES segundo o guião ('não sei se vale a pena', 'é caro', 'e se falecer antes de pagar', "
+    "'isto é um seguro?', 'e se mudar de zona/emigrar', 'e se forem à falência'). (5) FECHO de um "
+    "próximo passo concreto — confirmar o email, enviar orçamento detalhado e AGENDAR a próxima "
+    "chamada com dia/hora. PENALIZA: saltar a descoberta, despejar preço sem qualificar, responder "
+    "a objeções sem os argumentos do guião, e terminar sem próximo passo agendado. Foca-te em "
+    "empatia, qualificação, gestão de objeções e fecho do follow-up. Não sugiras cross-sell de "
+    "serviços que não existem."
+)
+
+BUSINESS_BLURBS = {
+    "nova_digital": (
+        "NOVA Digital vende formações IEFP financiadas em IA/tech a profissionais portugueses, "
+        "via telefone. O agente liga a prospects que mostraram interesse."
+    ),
+    "real_estate": (
+        "Real Estate Invest vende imóveis em desenvolvimentos portugueses específicos "
+        "(Conde da Ribeira, Copa, etc.). O agente faz primeiro contacto, agenda visitas, "
+        "negoceia condições e acompanha o pipeline até à reserva/escritura."
+    ),
+    "funeral_em_vida": (
+        "Funerárias Unidas vende o 'Funeral em Vida' — um contrato de serviço funerário pré-pago "
+        "em que a pessoa escolhe e paga antecipadamente todos os detalhes do seu próprio funeral, "
+        "com preço bloqueado (só atualização anual à inflação). O agente faz contacto outbound a "
+        "quem pediu informação, qualifica, explica o produto, gere objeções e fecha o próximo "
+        "passo (envio de orçamento + chamada de follow-up)."
+    ),
+}
+
+BUSINESS_RULES = {
+    "real_estate": REAL_ESTATE_RULE,
+    "funeral_em_vida": FUNERAL_RULE,
+}
+
 SYSTEM_PROMPT = """És um senior sales coach a escrever um relatório diário de coaching para um agente comercial em Portugal. O teu trabalho é analisar TODAS as chamadas do dia de uma vez e produzir feedback brutalmente honesto, específico, com referências a contactos, momentos e quotes concretas das transcrições.
 
 ESCREVE TODO O CONTEÚDO EM PORTUGUÊS DE PORTUGAL (PT-PT). Sem platitudes, sem generalidades. Cada afirmação tem de poder ser ligada a um momento concreto de uma chamada concreta.
@@ -102,25 +146,16 @@ def _build_user_prompt(
     context: Dict[str, Any],
 ) -> str:
     business = agent.get("business", "")
-    business_blurb = {
-        "nova_digital": (
-            "NOVA Digital vende formações IEFP financiadas em IA/tech a profissionais portugueses, "
-            "via telefone. O agente liga a prospects que mostraram interesse."
-        ),
-        "real_estate": (
-            "Real Estate Invest vende imóveis em desenvolvimentos portugueses específicos "
-            "(Conde da Ribeira, Copa, etc.). O agente faz primeiro contacto, agenda visitas, "
-            "negoceia condições e acompanha o pipeline até à reserva/escritura."
-        ),
-    }.get(business, "")
+    business_blurb = BUSINESS_BLURBS.get(business, "")
 
     sections: List[str] = []
     sections.append(f"AGENTE: {agent['display']}")
     sections.append(f"CONTEXTO DO NEGÓCIO: {business_blurb}")
     sections.append(f"DATA: {date_str}")
 
-    if business == "real_estate":
-        sections.append(REAL_ESTATE_RULE)
+    rule = BUSINESS_RULES.get(business)
+    if rule:
+        sections.append(rule)
 
     # Historical context block — short but informative
     insights = context.get("coaching_insights", {}) if context else {}

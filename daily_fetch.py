@@ -78,11 +78,11 @@ def setup_logging(run_date: str) -> None:
 # ---------------------------------------------------------------------------
 # HubSpot
 # ---------------------------------------------------------------------------
-def hubspot_headers() -> Dict[str, str]:
-    return {"Authorization": f"Bearer {HUBSPOT_TOKEN}", "Content-Type": "application/json"}
+def hubspot_headers(token: Optional[str] = None) -> Dict[str, str]:
+    return {"Authorization": f"Bearer {token or HUBSPOT_TOKEN}", "Content-Type": "application/json"}
 
 
-def fetch_calls_for_date(owner_id: str, date_str: str) -> list:
+def fetch_calls_for_date(owner_id: str, date_str: str, token: Optional[str] = None) -> list:
     start = f"{date_str}T00:00:00.000Z"
     end = f"{date_str}T23:59:59.999Z"
     all_calls: list = []
@@ -101,7 +101,7 @@ def fetch_calls_for_date(owner_id: str, date_str: str) -> list:
         }
         resp = requests.post(
             f"{HUBSPOT_API}/crm/v3/objects/calls/search",
-            headers=hubspot_headers(), json=payload, timeout=30,
+            headers=hubspot_headers(token), json=payload, timeout=30,
         )
         if resp.status_code != 200:
             log.error(f"HubSpot API error: {resp.status_code} — {resp.text[:200]}")
@@ -116,11 +116,11 @@ def fetch_calls_for_date(owner_id: str, date_str: str) -> list:
     return all_calls
 
 
-def get_contact_name(call_id: str) -> Optional[str]:
+def get_contact_name(call_id: str, token: Optional[str] = None) -> Optional[str]:
     try:
         resp = requests.get(
             f"{HUBSPOT_API}/crm/v3/objects/calls/{call_id}/associations/contacts",
-            headers=hubspot_headers(), timeout=15,
+            headers=hubspot_headers(token), timeout=15,
         )
         if resp.status_code != 200:
             return None
@@ -132,7 +132,7 @@ def get_contact_name(call_id: str) -> Optional[str]:
             return None
         resp2 = requests.get(
             f"{HUBSPOT_API}/crm/v3/objects/contacts/{contact_id}",
-            headers=hubspot_headers(), timeout=15,
+            headers=hubspot_headers(token), timeout=15,
             params={"properties": "firstname,lastname"},
         )
         if resp2.status_code != 200:
@@ -150,9 +150,9 @@ def get_contact_name(call_id: str) -> Optional[str]:
 # ---------------------------------------------------------------------------
 # Audio
 # ---------------------------------------------------------------------------
-def _stream_download(rec_url: str, audio_path: Path) -> int:
+def _stream_download(rec_url: str, audio_path: Path, token: Optional[str] = None) -> int:
     """Stream a URL to disk. Returns HTTP status or 0 on connection failure."""
-    resp = requests.get(rec_url, headers=hubspot_headers(), timeout=(15, 60), stream=True)
+    resp = requests.get(rec_url, headers=hubspot_headers(token), timeout=(15, 60), stream=True)
     if resp.status_code in (401, 403):
         resp = requests.get(rec_url, timeout=(15, 60), stream=True)
     status = resp.status_code
@@ -164,7 +164,7 @@ def _stream_download(rec_url: str, audio_path: Path) -> int:
     return status
 
 
-def download_recording(call_id: str, rec_url: str, audio_dir: Path) -> Optional[str]:
+def download_recording(call_id: str, rec_url: str, audio_dir: Path, token: Optional[str] = None) -> Optional[str]:
     """Download an MP3 with an absolute 180s cap (cross-platform via thread + future)."""
     audio_path = audio_dir / f"{call_id}.mp3"
     if audio_path.exists():
@@ -172,7 +172,7 @@ def download_recording(call_id: str, rec_url: str, audio_dir: Path) -> Optional[
     if not rec_url:
         return None
     with ThreadPoolExecutor(max_workers=1) as pool:
-        future = pool.submit(_stream_download, rec_url, audio_path)
+        future = pool.submit(_stream_download, rec_url, audio_path, token)
         try:
             status = future.result(timeout=DOWNLOAD_TIMEOUT_SEC)
         except FutureTimeoutError:
@@ -299,17 +299,18 @@ def fetch_and_transcribe(
     """
     audio_dir.mkdir(parents=True, exist_ok=True)
     transcript_dir.mkdir(parents=True, exist_ok=True)
-    raw = fetch_calls_for_date(agent["owner_id"], date_str)
+    token = os.getenv(agent["hubspot_token_env"]) if agent.get("hubspot_token_env") else HUBSPOT_TOKEN
+    raw = fetch_calls_for_date(agent["owner_id"], date_str, token)
     calls = normalize_calls(raw)
     with_rec = [c for c in calls if c["recording_url"]]
     log.info(f"  [{agent['display']}] {len(calls)} calls, {len(with_rec)} with recordings")
 
     for c in with_rec:
-        c["contact_name"] = get_contact_name(c["call_id"]) or c.get("title", f"Call {c['call_id']}")
+        c["contact_name"] = get_contact_name(c["call_id"], token) or c.get("title", f"Call {c['call_id']}")
         time.sleep(0.15)
 
     for c in with_rec:
-        c["audio_path"] = download_recording(c["call_id"], c["recording_url"], audio_dir)
+        c["audio_path"] = download_recording(c["call_id"], c["recording_url"], audio_dir, token)
 
     to_transcribe = [c for c in with_rec if c.get("audio_path")]
     results_map: Dict[str, dict] = {}

@@ -64,6 +64,14 @@ AGENTS = [
      "business": "real_estate",
      "email_to": "sandra@realestateinvest.pt",
      "email_cc": ["andre.nascimento@karma-network.com", "emanuel.martins@realestateinvest.pt"]},
+    {"name": "ruben_funeral", "display": "Rúben (Funeral em Vida)", "owner_id": "33660815",
+     "folder": "Ruben_Funeral_Call_Report",
+     "data_dir": AGENTS_DIR / "Ruben_Funeral_Call_Report" / "data",
+     "report_dir": AGENTS_DIR / "Ruben_Funeral_Call_Report" / "reports",
+     "report_display": "Rúben @ Funerárias Unidas",
+     "business": "funeral_em_vida",
+     "hubspot_token_env": "HUBSPOT_TOKEN_FUNERAL",
+     "email_to": "ruben.correia@funerariasunidas.pt", "email_cc": _CC_KARMA},
 ]
 
 
