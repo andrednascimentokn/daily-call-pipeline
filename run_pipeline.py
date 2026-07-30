@@ -376,6 +376,8 @@ def main() -> int:
     if not agents:
         log.error(f"Unknown agent: {args.agent}")
         return 1
+    if not args.agent:
+        agents = [a for a in agents if a.get("enabled", True)]
 
     if not os.getenv("HUBSPOT_TOKEN"):
         log.error("HUBSPOT_TOKEN not set"); return 1

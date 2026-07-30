@@ -146,6 +146,11 @@ def process_agent(agent: Dict[str, Any], week_start: datetime, days: List[dateti
                               ("total_calls", "completed", "transcribed", "days_active")},
                               "daily_analyses": len(daily_analyses)}
 
+    if metrics["total_calls"] == 0:
+        log.info(f"  [{display}] no calls this week — skipping PDF/email")
+        result["skipped"] = "no_calls"
+        return result
+
     if dry_run:
         log.info(f"  [{display}] dry-run — stop before analysis/PDF/email")
         return result
@@ -232,6 +237,8 @@ def main() -> int:
         if not agents:
             log.error(f"Unknown weekly agent: {args.agent}")
             return 2
+    else:
+        agents = [a for a in agents if a.get("enabled", True)]
 
     log.info(f"=== Weekly start | week={ws.strftime('%d-%m-%Y')}..{days[-1].strftime('%d-%m-%Y')} "
              f"| agents={len(agents)} | gcs_prefix='{args.gcs_prefix}' ===")
