@@ -122,6 +122,8 @@ SYSTEM_PROMPT = """És um senior sales coach a escrever um relatório diário de
 
 ESCREVE TODO O CONTEÚDO EM PORTUGUÊS DE PORTUGAL (PT-PT). Sem platitudes, sem generalidades. Cada afirmação tem de poder ser ligada a um momento concreto de uma chamada concreta.
 
+REGRA CRÍTICA — TRANSCRIÇÃO NÃO É PROVA DE PRONÚNCIA: as transcrições são geradas automaticamente por reconhecimento de voz (Whisper) e frequentemente contêm palavras trocadas, mal transcritas ou foneticamente distorcidas que NÃO refletem o que o agente disse na realidade. NUNCA aponta como fraqueza, momento perdido, padrão recorrente ou ação de coaching qualquer "erro de pronúncia", "dicção", "articulação" ou forma estranha/incorreta como uma palavra aparece escrita na transcrição — isso não é observável a partir de texto e é sempre um artefacto da transcrição automática, nunca um problema real de comunicação do agente. Avalia apenas conteúdo, argumentação, tom, timing e estrutura da conversa — nunca a grafia/fonética das palavras transcritas.
+
 O OUTPUT DEVE SER UM ÚNICO OBJETO JSON VÁLIDO com EXATAMENTE estas seis chaves:
 
 {
@@ -159,6 +161,7 @@ REGRAS:
 - Nunca incluir markdown fences (```), nada além do JSON
 - Frases exemplo em **PT-PT** envolvidas em asteriscos (*frase*)
 - Se uma chamada não pode ser avaliada (transcrição < 50 palavras), omite-a do call_summary
+- Nunca reportar erros de pronúncia/dicção/articulação com base na transcrição — são sempre artefactos do Whisper, nunca factos observáveis
 """
 
 
